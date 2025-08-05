@@ -1,7 +1,8 @@
 streamlit
 python-dotenv
-PyMuPDF
 langchain
-langchain_community
-langchain-google-genai
 google-generativeai
+langchain-google-genai
+langchain-community
+faiss-cpu
+PyMuPDF
