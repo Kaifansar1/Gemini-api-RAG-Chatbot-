@@ -6,8 +6,7 @@ from dotenv import load_dotenv
 from langchain.document_loaders import TextLoader, PyMuPDFLoader
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.vectorstores import FAISS
-from langchain.embeddings import GoogleGenerativeAIEmbeddings
-
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 # ------------------ Load API Key ------------------ #
 load_dotenv()
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
