@@ -2,11 +2,11 @@ import os
 import streamlit as st
 import hashlib
 import google.generativeai as genai
-from dotenv import load_dotenv
-from langchain.document_loaders import TextLoader, PyMuPDFLoader
-from langchain.text_splitter import CharacterTextSplitter
+from langchain_community.document_loaders import TextLoader, PyMuPDFLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import FAISS
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from dotenv import load_dotenv
 # ------------------ Load API Key ------------------ #
 load_dotenv()
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
