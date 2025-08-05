@@ -8,100 +8,114 @@ from langchain.vectorstores import FAISS
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain.chains.question_answering import load_qa_chain
 
-# ---------------------- SETTINGS ----------------------
+# -------------- ENV & PAGE CONFIG --------------
 load_dotenv()
 st.set_page_config(page_title="Gemini RAG Chatbot", layout="centered")
 
-# Optional UI Styling
+# -------------- MODERN STYLING --------------
 st.markdown("""
     <style>
-    body {background-color: #f0f2f6;}
-    .stTextInput>div>div>input {
-        color: #333;
-        background: #e0f7fa;
+    html, body {
+        background-color: #eef2f7;
+    }
+    .stApp {
+        background: linear-gradient(to bottom right, #e3f2fd, #fce4ec);
+        border-radius: 12px;
+        padding: 20px;
+        font-family: 'Segoe UI', sans-serif;
+    }
+    .stTextInput>div>div>input, .stTextArea textarea {
+        background-color: #ffffffdd;
+        border-radius: 8px;
+        font-size: 16px;
     }
     .stButton>button {
-        background-color: #2196F3;
+        background-color: #007BFF;
         color: white;
         font-weight: bold;
+        border-radius: 8px;
+        padding: 10px 16px;
     }
-    .stTextArea textarea {
-        background-color: #fffde7;
+    .stTitle {
+        color: #1a237e;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# ---------------------- USER CREDENTIALS ----------------------
+# -------------- LOGIN SYSTEM --------------
 USER_CREDENTIALS = {
     "admin": "admin123",
     "test": "test123"
 }
 
-# ---------------------- LOGIN SCREEN ----------------------
 def show_login():
-    st.title("🔐 Secure Login")
+    st.title("🔐 Login to Gemini Chatbot")
     username = st.text_input("👤 Username")
     password = st.text_input("🔑 Password", type="password")
-
     if st.button("Login"):
         if username in USER_CREDENTIALS and USER_CREDENTIALS[username] == password:
             st.session_state["authenticated"] = True
             st.success("✅ Login successful!")
-            st.rerun()
+            st.experimental_rerun()
         else:
             st.error("❌ Invalid username or password")
 
-# ---------------------- MAIN CHATBOT APP ----------------------
+# -------------- MAIN CHATBOT APP --------------
 def main_chatbot():
     st.title("💬 Gemini RAG Chatbot")
-    st.write("Ask questions based on the content of a PDF file.")
+    st.write("You can upload a PDF and ask questions about it **OR** just chat generally with the AI.")
 
-    # API Key
     api_key = os.getenv("GENAI_API_KEY")
     if not api_key:
-        st.error("❗ Please set your GENAI_API_KEY in Streamlit secrets or a .env file")
+        st.error("🚫 API key not found. Set GENAI_API_KEY in your .env file or Streamlit secrets.")
         st.stop()
 
-    # Upload PDF
-    pdf_file = st.file_uploader("📄 Upload a PDF file", type=["pdf"])
+    pdf_file = st.file_uploader("📄 Upload a PDF file (optional)", type=["pdf"])
+
+    vector_db = None
 
     if pdf_file:
-        with st.spinner("🔍 Processing your PDF..."):
+        with st.spinner("🔍 Processing PDF..."):
             with open("temp.pdf", "wb") as f:
                 f.write(pdf_file.read())
 
-            # Load & split
             loader = PyMuPDFLoader("temp.pdf")
             documents = loader.load()
-
-            splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
+            splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
             docs = splitter.split_documents(documents)
 
-            # Embed and index
-            embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
-            db = FAISS.from_documents(docs, embeddings)
+            try:
+                embeddings = GoogleGenerativeAIEmbeddings(
+                    model="models/embedding-001",
+                    google_api_key=api_key
+                )
+                vector_db = FAISS.from_documents(docs, embeddings)
+                st.success("✅ PDF processed successfully! Ask your question below.")
+            except ImportError:
+                st.warning("⚠️ FAISS library not found. PDF-based QA is disabled.")
 
-            st.success("✅ PDF processed! You can now ask questions.")
+    query = st.text_input("❓ Ask a question (from PDF or general)")
 
-            # Ask question
-            query = st.text_input("❓ Ask a question about the PDF")
-            if query:
-                retriever = db.as_retriever(search_type="similarity", search_kwargs={"k": 4})
-                matching_docs = retriever.get_relevant_documents(query)
+    if query:
+        llm = ChatGoogleGenerativeAI(model="gemini-pro", google_api_key=api_key)
 
-                llm = ChatGoogleGenerativeAI(model="gemini-pro", google_api_key=api_key)
-                chain = load_qa_chain(llm, chain_type="stuff")
+        if pdf_file and vector_db:
+            retriever = vector_db.as_retriever(search_type="similarity", search_kwargs={"k": 4})
+            matching_docs = retriever.get_relevant_documents(query)
+            chain = load_qa_chain(llm, chain_type="stuff")
+            response = chain.run(input_documents=matching_docs, question=query)
+        else:
+            response = llm.invoke(query)
 
-                response = chain.run(input_documents=matching_docs, question=query)
-                st.markdown(f"### 🤖 Answer:\n{response}")
+        st.markdown("### 🤖 Answer:")
+        st.success(response)
 
-    # Logout
-    st.markdown("---")
+    # Logout Button
     if st.button("🚪 Logout"):
         st.session_state.clear()
-        st.rerun()
+        st.experimental_rerun()
 
-# ---------------------- APP ROUTING ----------------------
+# -------------- APP ROUTER --------------
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
