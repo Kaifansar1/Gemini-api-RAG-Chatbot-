@@ -1,186 +1,115 @@
 import os
 import streamlit as st
-import hashlib
-import google.generativeai as genai
-from langchain_community.document_loaders import TextLoader, PyMuPDFLoader
+from dotenv import load_dotenv
+
+from langchain_community.document_loaders import PyMuPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import FAISS
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from dotenv import load_dotenv
-# ------------------ Load API Key ------------------ #
-load_dotenv()
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+from langchain.chains.question_answering import load_qa_chain
+from langchain.llms import GoogleGenerativeAI
 
-# ------------------ User Authentication ------------------ #
-USERS = {
+# ---------------------- SETTINGS ----------------------
+load_dotenv()
+
+st.set_page_config(page_title="Gemini RAG Chatbot", layout="centered")
+
+# Style
+st.markdown("""
+    <style>
+    body {background-color: #f0f2f6;}
+    .stTextInput>div>div>input {
+        color: #333;
+        background: #e0f7fa;
+    }
+    .stButton>button {
+        background-color: #2196F3;
+        color: white;
+        font-weight: bold;
+    }
+    .stTextArea textarea {
+        background-color: #fffde7;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# ---------------------- USER CREDENTIALS ----------------------
+
+USER_CREDENTIALS = {
     "admin": "admin123",
-    "guest": "guest123"
+    "test": "test123"
 }
 
-def authenticate(username, password):
-    return USERS.get(username) == password
+# ---------------------- LOGIN ----------------------
 
-# ------------------ Login UI ------------------ #
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
+def show_login():
+    st.title("🔐 Secure Login")
 
-if not st.session_state.authenticated:
-    st.title("🔐 Gemini Chatbot Login")
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
+    username = st.text_input("👤 Username")
+    password = st.text_input("🔑 Password", type="password")
+
     if st.button("Login"):
-        if authenticate(username, password):
-            st.session_state.authenticated = True
+        if username in USER_CREDENTIALS and USER_CREDENTIALS[username] == password:
+            st.session_state["authenticated"] = True
             st.success("✅ Login successful!")
             st.experimental_rerun()
         else:
-            st.error("❌ Invalid username or password.")
-    st.stop()
+            st.error("❌ Invalid username or password")
 
-# ------------------ Custom CSS ------------------ #
-st.markdown("""
-<style>
-body, html {
-    margin: 0;
-    padding: 0;
-    font-family: 'Segoe UI', sans-serif;
-}
-.stApp {
-    background: linear-gradient(to right, #eef2ff, #fef9f9);
-    padding: 10px;
-}
-h1, h2 {
-    text-align: center;
-    color: #1e3a8a;
-    font-weight: bold;
-}
-.chat-container {
-    max-height: 75vh;
-    overflow-y: auto;
-    padding: 15px;
-    border-radius: 12px;
-    background-color: #ffffffdd;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    margin-bottom: 20px;
-}
-.chat-bubble {
-    padding: 12px 18px;
-    border-radius: 20px;
-    margin: 10px;
-    display: flex;
-    align-items: flex-end;
-    max-width: 85%;
-    word-wrap: break-word;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-}
-.user-bubble {
-    background-color: #dcfce7;
-    color: #065f46;
-    margin-left: auto;
-    justify-content: flex-end;
-    border-top-right-radius: 0;
-}
-.bot-bubble {
-    background-color: #e0e7ff;
-    color: #1e3a8a;
-    margin-right: auto;
-    justify-content: flex-start;
-    border-top-left-radius: 0;
-}
-.avatar {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    margin: 0 10px;
-}
-.user-avatar {
-    background: url('https://i.imgur.com/QnQ3fYQ.png') no-repeat center center / cover;
-}
-.bot-avatar {
-    background: url('https://i.imgur.com/N7yXh8C.png') no-repeat center center / cover;
-}
-@media screen and (max-width: 768px) {
-    .chat-bubble {
-        font-size: 15px;
-        max-width: 95%;
-        flex-direction: column;
-        align-items: flex-start;
-    }
-}
-</style>
-""", unsafe_allow_html=True)
+# ---------------------- MAIN CHATBOT ----------------------
 
-# ------------------ Initialize Chat History ------------------ #
-if "chat" not in st.session_state:
-    model = genai.GenerativeModel("gemini-pro")
-    st.session_state.chat = model.start_chat(history=[])
-if "vectorstore" not in st.session_state:
-    st.session_state.vectorstore = None
+def main_chatbot():
+    st.title("💬 Gemini RAG Chatbot")
+    st.write("Ask questions based on uploaded PDF content.")
 
-# ------------------ App UI ------------------ #
-st.title("🧠 Gemini Chatbot with RAG + Modern UI")
+    # API KEY
+    api_key = os.getenv("GENAI_API_KEY")
+    if not api_key:
+        st.error("❗ Please set GENAI_API_KEY in your Streamlit secrets or .env")
+        st.stop()
 
-# Document uploader
-with st.expander("📄 Upload .txt or .pdf Files for RAG"):
-    uploaded_files = st.file_uploader("Upload text or PDF files", type=["txt", "pdf"], accept_multiple_files=True)
-    if uploaded_files:
-        documents = []
-        os.makedirs("temp_docs", exist_ok=True)
-        for file in uploaded_files:
-            path = os.path.join("temp_docs", file.name)
-            with open(path, "wb") as f:
-                f.write(file.read())
+    # Upload PDF
+    pdf_file = st.file_uploader("📄 Upload a PDF file", type=["pdf"])
 
-            if file.name.endswith(".txt"):
-                loader = TextLoader(path)
-            elif file.name.endswith(".pdf"):
-                loader = PyMuPDFLoader(path)
-            else:
-                st.warning(f"Unsupported file type: {file.name}")
-                continue
+    if pdf_file:
+        with st.spinner("🔍 Processing PDF..."):
+            with open("temp.pdf", "wb") as f:
+                f.write(pdf_file.read())
 
-            documents.extend(loader.load())
+            loader = PyMuPDFLoader("temp.pdf")
+            documents = loader.load()
 
-        splitter = CharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-        chunks = splitter.split_documents(documents)
+            splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
+            docs = splitter.split_documents(documents)
 
-        embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
-        vectorstore = FAISS.from_documents(chunks, embeddings)
-        st.session_state.vectorstore = vectorstore
-        st.success("✅ Files embedded successfully!")
+            embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
+            db = FAISS.from_documents(docs, embeddings)
 
-# ------------------ Display Chat ------------------ #
-st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+            st.success("✅ PDF processed! Ask your question below:")
 
-for msg in st.session_state.chat.history:
-    if msg.role == "user":
-        st.markdown(f"""
-            <div class="chat-bubble user-bubble">
-                <div class="avatar user-avatar"></div>
-                <div>{msg.parts[0].text}</div>
-            </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.markdown(f"""
-            <div class="chat-bubble bot-bubble">
-                <div class="avatar bot-avatar"></div>
-                <div>{msg.parts[0].text}</div>
-            </div>
-        """, unsafe_allow_html=True)
+            query = st.text_input("❓ Ask a question")
+            if query:
+                retriever = db.as_retriever(search_type="similarity", search_kwargs={"k": 4})
+                matching_docs = retriever.get_relevant_documents(query)
 
-st.markdown("</div>", unsafe_allow_html=True)
+                llm = GoogleGenerativeAI(model="models/text-bison-001", google_api_key=api_key)
+                chain = load_qa_chain(llm, chain_type="stuff")
 
-# ------------------ User Input ------------------ #
-query = st.chat_input("Ask your question here...")
+                response = chain.run(input_documents=matching_docs, question=query)
 
-if query:
-    st.session_state.chat.send_message(query)
-    if st.session_state.vectorstore:
-        docs = st.session_state.vectorstore.similarity_search(query, k=3)
-        context = "\\n".join([doc.page_content for doc in docs])
-        prompt = f"Answer using context:\n{context}\n\nQuestion: {query}"
-        response = st.session_state.chat.send_message(prompt)
-    else:
-        response = st.session_state.chat.send_message(query)
+                st.markdown(f"### 🤖 Answer:\n{response}")
 
-    st.experimental_rerun()
+    st.markdown("---")
+    if st.button("🚪 Logout"):
+        st.session_state.clear()
+        st.experimental_rerun()
+
+# ---------------------- ROUTER ----------------------
+
+if "authenticated" not in st.session_state:
+    st.session_state["authenticated"] = False
+
+if st.session_state["authenticated"]:
+    main_chatbot()
+else:
+    show_login()
