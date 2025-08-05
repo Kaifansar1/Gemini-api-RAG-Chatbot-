@@ -38,13 +38,19 @@ USER_CREDENTIALS = {
 }
 
 # ---------------------- LOGIN SCREEN ----------------------
-if st.button("Login"):
-    if username in USER_CREDENTIALS and USER_CREDENTIALS[username] == password:
-        st.session_state["authenticated"] = True
-        st.success("✅ Login successful!")
-        st.rerun()   # <-- updated
-    else:
-        st.error("❌ Invalid username or password")
+def show_login():
+    st.title("🔐 Secure Login")
+    username = st.text_input("👤 Username")
+    password = st.text_input("🔑 Password", type="password")
+
+    if st.button("Login"):
+        if username in USER_CREDENTIALS and USER_CREDENTIALS[username] == password:
+            st.session_state["authenticated"] = True
+            st.success("✅ Login successful!")
+            st.rerun()
+        else:
+            st.error("❌ Invalid username or password")
+
 # ---------------------- MAIN CHATBOT APP ----------------------
 def main_chatbot():
     st.title("💬 Gemini RAG Chatbot")
@@ -90,9 +96,10 @@ def main_chatbot():
                 st.markdown(f"### 🤖 Answer:\n{response}")
 
     # Logout
-if st.button("🚪 Logout"):
-    st.session_state.clear()
-    st.rerun()
+    st.markdown("---")
+    if st.button("🚪 Logout"):
+        st.session_state.clear()
+        st.rerun()
 
 # ---------------------- APP ROUTING ----------------------
 if "authenticated" not in st.session_state:
