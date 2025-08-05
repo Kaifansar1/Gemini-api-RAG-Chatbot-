@@ -1,7 +1,9 @@
-faiss-cpu
-langchain
-langchain-community
-langchain-google-genai
-PyMuPDF
 streamlit
 python-dotenv
+langchain
+langchain_community
+langchain_google_genai
+google-generativeai
+sentence-transformers
+faiss-cpu
+PyMuPDF
