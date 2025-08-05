@@ -90,9 +90,9 @@ def main_chatbot():
                 st.markdown(f"### 🤖 Answer:\n{response}")
 
     # Logout
-    if st.button("🚪 Logout"):
+if st.button("🚪 Logout"):
     st.session_state.clear()
-    st.rerun()   # <-- updated
+    st.rerun()
 
 # ---------------------- APP ROUTING ----------------------
 if "authenticated" not in st.session_state:
