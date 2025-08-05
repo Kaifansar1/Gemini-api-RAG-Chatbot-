@@ -5,16 +5,14 @@ from dotenv import load_dotenv
 from langchain_community.document_loaders import PyMuPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import FAISS
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain.chains.question_answering import load_qa_chain
-from langchain.llms import GoogleGenerativeAI
 
 # ---------------------- SETTINGS ----------------------
 load_dotenv()
-
 st.set_page_config(page_title="Gemini RAG Chatbot", layout="centered")
 
-# Style
+# Optional UI Styling
 st.markdown("""
     <style>
     body {background-color: #f0f2f6;}
@@ -34,17 +32,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------- USER CREDENTIALS ----------------------
-
 USER_CREDENTIALS = {
     "admin": "admin123",
     "test": "test123"
 }
 
-# ---------------------- LOGIN ----------------------
-
+# ---------------------- LOGIN SCREEN ----------------------
 def show_login():
     st.title("🔐 Secure Login")
-
     username = st.text_input("👤 Username")
     password = st.text_input("🔑 Password", type="password")
 
@@ -56,56 +51,57 @@ def show_login():
         else:
             st.error("❌ Invalid username or password")
 
-# ---------------------- MAIN CHATBOT ----------------------
-
+# ---------------------- MAIN CHATBOT APP ----------------------
 def main_chatbot():
     st.title("💬 Gemini RAG Chatbot")
-    st.write("Ask questions based on uploaded PDF content.")
+    st.write("Ask questions based on the content of a PDF file.")
 
-    # API KEY
+    # API Key
     api_key = os.getenv("GENAI_API_KEY")
     if not api_key:
-        st.error("❗ Please set GENAI_API_KEY in your Streamlit secrets or .env")
+        st.error("❗ Please set your GENAI_API_KEY in Streamlit secrets or a .env file")
         st.stop()
 
     # Upload PDF
     pdf_file = st.file_uploader("📄 Upload a PDF file", type=["pdf"])
 
     if pdf_file:
-        with st.spinner("🔍 Processing PDF..."):
+        with st.spinner("🔍 Processing your PDF..."):
             with open("temp.pdf", "wb") as f:
                 f.write(pdf_file.read())
 
+            # Load & split
             loader = PyMuPDFLoader("temp.pdf")
             documents = loader.load()
 
             splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
             docs = splitter.split_documents(documents)
 
+            # Embed and index
             embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
             db = FAISS.from_documents(docs, embeddings)
 
-            st.success("✅ PDF processed! Ask your question below:")
+            st.success("✅ PDF processed! You can now ask questions.")
 
-            query = st.text_input("❓ Ask a question")
+            # Ask question
+            query = st.text_input("❓ Ask a question about the PDF")
             if query:
                 retriever = db.as_retriever(search_type="similarity", search_kwargs={"k": 4})
                 matching_docs = retriever.get_relevant_documents(query)
 
-                llm = GoogleGenerativeAI(model="models/text-bison-001", google_api_key=api_key)
+                llm = ChatGoogleGenerativeAI(model="gemini-pro", google_api_key=api_key)
                 chain = load_qa_chain(llm, chain_type="stuff")
 
                 response = chain.run(input_documents=matching_docs, question=query)
-
                 st.markdown(f"### 🤖 Answer:\n{response}")
 
+    # Logout
     st.markdown("---")
     if st.button("🚪 Logout"):
         st.session_state.clear()
         st.experimental_rerun()
 
-# ---------------------- ROUTER ----------------------
-
+# ---------------------- APP ROUTING ----------------------
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
